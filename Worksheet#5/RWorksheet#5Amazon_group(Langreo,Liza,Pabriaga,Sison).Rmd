@@ -1,0 +1,213 @@
+---
+title: "RWorksheet#5Amazon_group(Langreo,Liza,Pabriaga,Sison)"
+author: "John Martin S. Pabriaga"
+date: "2024-11-30"
+output: pdf_document
+---
+```{r}
+# Load the necessary libraries for web scraping, data manipulation, and visualization
+library(rvest)       
+library(dplyr)       
+library(stringr)     
+library(polite)      
+library(ggplot2)     
+
+# Set up polite scraping session to avoid aggressive scraping
+polite::use_manners(save_as = 'polite_scrape.R')
+
+base_url <- 'https://www.amazon.com'  
+
+# Initiating a session with polite web scraping manners
+scrape<- bow(base_url, user_agent = "Educational")
+scrape
+
+```
+
+```{r}
+# Define the function to scrape product details from a given category on Amazon
+scrape_prod <- function(base_url, product_category, max_items = 30) {
+  prod_data <- data.frame()  
+  current_page <- 1           
+
+  # Keep scraping until the required number of products is reached
+  while (nrow(prod_data) < max_items) {
+    category_url <- paste0(base_url, "&page=", current_page) 
+    message("Scraping: ", category_url)
+    
+    # Read the HTML content of the page
+    page_html <- read_html(category_url)
+
+    # Extract product titles from the page
+    titles <- page_html %>%
+      html_nodes("span.a-text-normal") %>%
+      html_text(trim = TRUE)
+    
+    # Remove any unwanted or irrelevant entries in the titles
+    titles <- titles[titles != "Check each product page for other buying options."]
+    
+    # Extract product prices
+    prices <- page_html %>%
+      html_nodes('.a-price .a-offscreen') %>%
+      html_text(trim = TRUE)
+    
+    # Extract the product ratings and convert them to numeric values
+    ratings <- page_html %>%
+      html_nodes('span.a-icon-alt') %>%
+      html_text(trim = TRUE) %>%
+      str_extract("\\d\\.\\d") %>%
+      as.numeric()
+
+    # Extract the number of reviews each product has
+    review_counts <- page_html %>%
+      html_nodes('.s-link-style .s-underline-text') %>%
+      html_text(trim = TRUE)
+    
+    # Extract product descriptions
+    descriptions <- page_html %>%
+      html_nodes("span.a-text-normal") %>%
+      html_text(trim = TRUE)
+    
+    # Remove unwanted entries from the descriptions
+    descriptions <- descriptions[descriptions != "Check each product page for other buying options."]
+    
+    # Ensure that all vectors have the same length before proceeding
+    min_length <- min(length(titles), length(prices), length(ratings), length(descriptions), length(review_counts))
+    if (min_length == 0) break  # If any of the vectors is empty, stop scraping
+
+    # Create a data frame for the current page's product data
+    page_data <- data.frame(
+      Title = head(titles, min_length),              
+      Price = head(prices, min_length),              
+      Category = rep(product_category, min_length),  
+      Rating = head(ratings, min_length),            
+      ReviewCount = head(review_counts, min_length), 
+      Description = head(descriptions, min_length)   
+    )
+
+    # Append the data from this page to the overall data
+    product_data <- bind_rows(product_data, page_data)
+    
+    # Move to the next page
+    current_page <- current_page + 1
+  }
+  
+  # Limit the total number of products to the specified maximum
+  prod_data <- head(prod_data, max_items)
+  
+  # Add an index to the product titles for clarity
+  prod_data$Title <- paste0(seq_len(nrow(prod_data)), ". ", prod_data$Title)
+  
+  return(prod_data)  
+}
+
+
+```
+
+```{r}
+# Define URLs for different product categories to scrape
+Shoes_url <- "https://www.amazon.com/s?k=shoes"
+Bags_url <- "https://www.amazon.com/bag/s?k=bag"
+Clothes_url <- "https://www.amazon.com/clothes/s?k=clothes"
+Furnitures_url <- "https://www.amazon.com/s?k=Furniture"
+School_Supplies_url <- "https://www.amazon.com/school-supplies/s?k=school+supplies"
+
+```
+
+```{r}
+# Scrape 30 products from each category
+Shoes_data <- scrape_products (Shoes_url, "Shoes", 30)
+Bags_data <- scrape_products (Bags_url, "Bags", 30)
+Clothes_data <- scrape_products (Clothes_url, "Clothes", 30)
+Furnitures_data <- scrape_products (Furnitures_url, "Furnitures", 30)
+School_Supplies_data <- scrape_products (School_Supplies_url, "SchoolSupplies", 30)
+
+```
+
+```{r}
+# Combine the scraped data from all categories into a single data frame
+combined_prod <- bind_rows(Shoes_data, Bags_data, Clothes_data, Furnitures_data, School_Supplies_data)
+
+# Preview the combined product data
+combined_prod
+
+# Save the combined product data to a CSV file
+write.csv(combined_prod, "Amazon_Scrape.csv", row.names = FALSE)
+
+```
+s
+
+```{r}
+# Load the CSV file containing the scraped product data
+all_prod_data <- read.csv("Amazon_Scrape.csv")
+
+# Clean the price data by removing dollar signs and commas, then converting to numeric
+all_prod_data$Price <- as.numeric(gsub("[$,]", "", all_prod_data$Price))
+
+# Filter out rows with missing or incomplete data
+cleaned_prod_data <- all_prod_data %>%
+  filter(!is.na(Price), !is.na(Rating), !is.na(ReviewCount))
+
+# Graph 1: Distribution of product prices
+ggplot(cleaned_prod_data, aes(x = Price)) +
+  geom_histogram(binwidth = 50, fill = "lightblue", color = "lightgray") +
+  labs(title = "Price Distribution of Products", x = "Price ($)", y = "Frequency") +
+  theme_minimal()
+
+# Graph 2: Average ratings by category
+average_ratings <- cleaned_prod_data %>%
+  group_by(Category) %>%
+  summarize(AverageRating = mean(Rating, na.rm = TRUE))
+
+ggplot(average_ratings, aes(x = Category, y = AverageRating, fill = Category)) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Average Ratings by Category", x = "Category", y = "Average Rating") +
+  theme_minimal()
+
+# Graph 3: Total number of reviews by category
+total_reviews_per_category <- cleaned_prod_data %>%
+  group_by(Category) %>%
+  summarize(TotalReviews = sum(as.numeric(gsub("[^0-9]", "", ReviewCount)), na.rm = TRUE))
+
+ggplot(total_reviews_per_category, aes(x = Category, y = TotalReviews, fill = Category)) +
+  geom_bar(stat = "identity", color = "black") +
+  labs(title = "Total Reviews by Category", x = "Category", y = "Review Count") +
+  theme_minimal()
+
+# Graph 4: Relationship between ratings and review counts
+ggplot(cleaned_prod_data, aes(x = Rating, y = as.numeric(gsub("[^0-9]", "", ReviewCount)))) +
+  geom_point(alpha = 0.6, color = "navy") +
+  labs(title = "Ratings vs Number of Reviews", x = "Ratings", y = "Review Count") +
+  theme_minimal()
+```
+
+```{r}
+# Graph 5: Visualizing price vs ratings across categories
+ggplot(cleaned_prod_data, aes(x = Price, y = Rating, color = Category)) +
+  geom_point() +
+  facet_wrap(~ Category, scales = "free") +
+  labs(title = "Ratings vs Price by Category", x = "Price ($)", y = "Ratings") +
+  theme_minimal() +
+  theme(legend.position = "none")
+```
+```{r}
+# Rank products by Ratings
+ranked_by_rating <- cleaned_prod_data %>%
+  arrange(desc(Rating))
+head(ranked_by_rating, 150)
+
+```
+
+```{r}
+# Rank products by Price
+cleaned_prod_data$Price <- as.numeric(gsub("\\$", "", cleaned_prod_data$Price))
+
+# Sort products by Price in ascending order
+ranked_by_price_asc <- cleaned_prod_data %>%
+  arrange(Price)
+
+# Sort products by Price in descending order
+ranked_by_price_desc <- cleaned_prod_data %>%
+  arrange(desc(Price))
+head(ranked_by_price_desc, 150)
+
+```
