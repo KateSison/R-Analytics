@@ -1,0 +1,214 @@
+---
+title: "Sentiments-Analysis"
+output: html_document
+date: "2024-12-18"
+---
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+library(stringr)
+
+# Load dataset
+tweets <- read.csv("C:/Users/kcasa/Downloads/tweetsDF.csv")
+
+# Data cleaning and preparation
+processed_tweets <- tweets %>%
+  select(-c(statusSource, Created_At_Round)) %>%
+  mutate(timestamp = as.POSIXct(created, format = "%Y-%m-%d %H:%M:%S"),
+         tweet_date = as.Date(timestamp),
+         tweet_hour = hour(timestamp),
+         day_of_week = weekdays(timestamp)) %>%
+  distinct(text, .keep_all = TRUE)
+
+# Analyze daily tweet volume
+daily_summary <- processed_tweets %>%
+  group_by(tweet_date) %>%
+  summarise(total_tweets = n())
+
+# Plot daily tweet trends
+ggplot(daily_summary, aes(x = tweet_date, y = total_tweets)) +
+  geom_line(color = "brown") +
+  geom_point(color = "maroon") +
+  theme_minimal() +
+  labs(title = "Daily Twitter Activity",
+       x = "Date",
+       y = "Number of Tweets")
+
+# Analyze hourly tweet patterns
+hourly_summary <- processed_tweets %>%
+  group_by(tweet_hour) %>%
+  summarise(total_tweets = n())
+
+# Plot hourly tweet distribution
+ggplot(hourly_summary, aes(x = tweet_hour, y = total_tweets)) +
+  geom_bar(stat = "identity", fill = "red") +
+  theme_minimal() +
+  labs(title = "Hourly Distribution of Tweets",
+       x = "Hour of Day",
+       y = "Tweet Count")
+
+# Analyze weekly tweet activity
+weekly_summary <- processed_tweets %>%
+  group_by(day_of_week) %>%
+  summarise(total_tweets = n()) %>%
+  mutate(day_of_week = factor(day_of_week,
+                               levels = c("Sunday", "Monday", "Tuesday", "Wednesday", 
+                                          "Thursday", "Friday", "Saturday")))
+
+# Plot weekly tweet trends
+ggplot(weekly_summary, aes(x = day_of_week, y = total_tweets)) +
+  geom_bar(stat = "identity", fill = "black") +
+  theme_minimal() +
+  labs(title = "Weekly Twitter Trends",
+       x = "Day of the Week",
+       y = "Number of Tweets")
+
+# Analyze usage by platform
+platform_summary <- processed_tweets %>%
+  group_by(tweetSource) %>%
+  summarise(total_usage = n())
+
+# Plot platform usage
+ggplot(platform_summary, aes(x = reorder(tweetSource, -total_usage), y = total_usage, fill = tweetSource)) +
+  geom_bar(stat = "identity") +
+  theme_minimal() +
+  labs(title = "Platform Analysis",
+       x = "Platform",
+       y = "Tweet Count") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+
+
+```{r}
+library(dplyr)
+library(tidytext)
+library(ggplot2)
+library(textdata)
+
+selected_tweet_id <- 1  
+
+tweet_data <- read.csv("C:/Users/kcasa/Downloads/tweetsDF.csv")
+
+unique_tweets <- tweet_data %>%
+  select(text) %>%
+  distinct(text, .keep_all = TRUE)
+
+
+# Tokenize tweet text
+tokenized_tweets <- unique_tweets %>%
+  unnest_tokens(word, text)
+
+# Remove common stop words
+data("stop_words")
+clean_tokens <- tokenized_tweets %>%
+  anti_join(stop_words, by = "word")
+
+# Perform sentiment analysis
+nrc_sentiment_lexicon <- get_sentiments("nrc")
+sentiment_distribution <- clean_tokens %>%
+  inner_join(nrc_sentiment_lexicon, by = "word") %>%
+  count(sentiment, sort = TRUE)
+
+# Plot sentiment distribution
+ggplot(sentiment_distribution, aes(x = reorder(sentiment, n), y = n, fill = sentiment)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Sentiment Distribution",
+       x = "Sentiment",
+       y = "Frequency") +
+  scale_fill_brewer(palette = "Set3")
+
+sentiment_distribution
+
+```
+
+
+```{r}
+library(dplyr)
+library(tidytext)
+library(ggplot2)
+library(lubridate)
+
+# Load the dataset
+tweets_dataset <- read.csv("C:/Users/kcasa/Downloads/tweetsDF.csv")
+
+cleaned_tweet_data <- tweets_dataset %>%
+  select(created, text) %>%
+  distinct(text, .keep_all = TRUE) %>%
+  filter(!is.na(text))  
+
+# Convert dates
+cleaned_tweet_data$created <- as.Date(cleaned_tweet_data$created)
+
+# Tokenize text
+tokenized_words_data <- cleaned_tweet_data %>%
+  unnest_tokens(word, text)
+
+# Remove stop words
+data("stop_words")
+filtered_tokenized_words <- tokenized_words_data %>%
+  anti_join(stop_words, by = "word")
+
+# NRC Sentiments
+nrc_sentiment_lexicon <- get_sentiments("nrc")
+word_sentiment_data <- filtered_tokenized_words %>%
+  inner_join(nrc_sentiment_lexicon, by = "word") %>%
+  count(created, sentiment, sort = TRUE)
+
+# Sentiment Trends
+sentiment_trend_data <- word_sentiment_data %>%
+  group_by(created, sentiment) %>%
+  summarise(daily_sentiment_count = sum(n)) %>%
+  ungroup()
+
+# Plot Sentiment Trends
+ggplot(sentiment_trend_data, aes(x = created, y = daily_sentiment_count, color = sentiment)) +
+  geom_line() +
+  theme_minimal() +
+  labs(title = "Sentiment Trends Over Time",
+       x = "Date",
+       y = "Sentiment Count",
+       color = "Sentiment") +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+# Sentiment Distribution
+sentiment_distribution_data <- word_sentiment_data %>%
+  group_by(sentiment) %>%
+  summarise(sentiment_count = sum(n)) %>%
+  ungroup()
+
+# Plot Sentiment Distribution
+ggplot(sentiment_distribution_data, aes(x = reorder(sentiment, sentiment_count), y = sentiment_count, fill = sentiment)) +
+  geom_bar(stat = "identity", show.legend = FALSE) +
+  coord_flip() +
+  theme_minimal() +
+  labs(title = "Overall Sentiment Distribution",
+       x = "Sentiment",
+       y = "Count") +
+  scale_fill_brewer(palette = "Set1")
+
+# Positive and Negative Tweets
+positive_sentiment_count <- word_sentiment_data %>%
+  filter(sentiment == "positive") %>%
+  summarise(positive_tweet_count = sum(n))
+
+negative_sentiment_count <- word_sentiment_data %>%
+  filter(sentiment == "negative") %>%
+  summarise(negative_tweet_count = sum(n))
+
+print(paste("Number of Positive Tweets: ", positive_sentiment_count$positive_tweet_count))
+print(paste("Number of Negative Tweets: ", negative_sentiment_count$negative_tweet_count))
+
+# Check if negative sentiment outweighs positive sentiment
+if (negative_sentiment_count$negative_tweet_count > positive_sentiment_count$positive_tweet_count) {
+  action_message <- "Alert: Negative sentiment is prevalent. It is advisable to take immediate steps to address the concerns raised."
+} else {
+  action_message <- "Positive sentiment is leading. It may be beneficial to strengthen positive messaging to maintain the momentum."
+}
+
+
+```
+
